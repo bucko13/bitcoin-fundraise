@@ -3,74 +3,46 @@
 const bcoin = require('bcoin');
 const MTX = bcoin.mtx;
 const HashTypes = bcoin.script.hashType;
+const httpWallet = bcoin.http.Wallet;
 
 const fundingTarget = 100000000; // 1 BTC
 const network = 'testnet';
-console.log('hashtypes: ', HashTypes);
 
 (async () => {
-const client = await new bcoin.http.Client({ network });
+  const primary = await new httpWallet({id: 'primary', network: 'simnet'});
+  const balance = await primary.getBalance('default');
+  console.log('primary balance: ', bcoin.amount.btc(balance.unconfirmed));
+  const client = await new bcoin.http.Client({ network });
 
-// Step 1: Create a blank mtx
-const fundMe = new MTX();
+  // Step 1: Setup our wallets and funding targets
+  const fundeeWallet = await new httpWallet({ id: 'foo', network });
 
-// Step 2:
-// Add an output with the target amount
-// you would like to raise and an address you control
+  const fundeeAddress = await fundeeWallet.createAddress('default');
 
-const fundeeWallet = await new bcoin.http.Wallet({
-    id: 'primary',
-    network
-  });
-const fundeeAddress = await fundeeWallet.createAddress('default');
+  let funder1Wallet = await new httpWallet({ id: 'funder-1', network });
+  let funder2Wallet = await new httpWallet({ id: 'funder-2', network });
 
-// need this because can't serialize and output mtx with no input
-fundMe.addInput(new bcoin.primitives.Input());
+  // Step 2: Create coin/outpoint that equals the target fund amount for funders
 
-fundMe.addOutput({value: fundingTarget, address: fundeeAddress.address });
+  // Step 3: Create and template the mtx with output for funding target
+  const fundMe = new MTX();
+  // need this because can't serialize and output mtx with no input
+  fundMe.addInput(new bcoin.primitives.Input());
 
-// Step 3: Get funder wallet, find coins to fund with, add input, and sign
+  fundMe.addOutput({value: fundingTarget, address: fundeeAddress.address });
 
-// check if the wallet exists and if not create it.
-let funderWallet = await client.getWallet('funder-1');
+  // Step 4: Add inputs from the funder wallets
+  // Note that the following steps assume the funder wallet has balance > 0
 
-if (!funderWallet) {
-  await client.createWallet({id: 'funder-1'});
-}
+  // Step 5: estimate fee based on rate and size of transaction
+  // and subtract from output value
 
-funderWallet = await new bcoin.http.Wallet({
-  id: 'funder-1',
-  network
-});
+  // Step 6: Transmit the splitting transactions followed by the fund tx
 
-// Note that the following steps assume the funder wallet has balance > 0
 
-// get coins in funder wallet.
-// (Alt: could just add fake coinbase transactions to fund with,
-// probably necessary if including the step to create new wallet)
+    // Sign and broadcast tx
 
-// Check if coin exists with the exact amount
-// If no exact amount coin-
-  // create and broadcast transaction to self with amount (plus change)
-
-// Get coin that has amount you want to fund for
-
-// Add coin as input to fundMe tx and sign the tx
-
-// Check if tx is fully funded
-
-  // if not fully funded then repeat funding steps (maybe with other wallets)
-
-// Step 4: When fully funded, add input to cover tx fee, sign, and broadcast
-
-// If fully funded
-  // Get size of transaction and calculate satoshis per byte for tx fee
-
-  // add final input to cover tx fee from the fundeeWallet
-
-  // Sign and broadcast tx
-
-console.log('transaction: ', fundMe);
+  // console.log('transaction: ', fundMe);
 })();
 
 /** *****
