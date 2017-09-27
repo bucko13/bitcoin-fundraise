@@ -1,0 +1,27 @@
+{
+  "name": "bitcoin-fundraise",
+  "version": "1.0.0",
+  "description": "Simple app that creates a transaction structured for fundraising using an ALL|ANYONECANSPEND sighash where anyone can contribute inputs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bucko13/bitcoin-fundraise.git"
+  },
+  "keywords": [
+    "bitcoin",
+    "bcoin",
+    "blockchain"
+  ],
+  "author": "Buck Perley",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Bucko13/bitcoin-fundraise/issues"
+  },
+  "homepage": "https://github.com/Bucko13/bitcoin-fundraise#readme",
+  "dependencies": {
+    "bcoin": "^1.0.0-beta.15"
+  }
+}
