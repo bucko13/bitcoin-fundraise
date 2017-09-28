@@ -3,6 +3,7 @@
 const assert = require('assert');
 const bcoin = require('bcoin');
 const MTX = bcoin.mtx;
+const Script = bcoin.script;
 const HashTypes = bcoin.script.hashType;
 const httpWallet = bcoin.http.Wallet;
 
@@ -17,9 +18,11 @@ const network = 'simnet';
   const fundeeWallet = await new httpWallet({ id: 'fundee', network });
 
   const fundeeAddress = await fundeeWallet.createAddress('default');
-  const funder1Wallet = await new httpWallet({ id: 'funder-1', network });
-  const funder2Wallet = await new httpWallet({ id: 'funder-2', network });
-  const funders = [funder1Wallet, funder2Wallet];
+
+  const funders = {
+    'funder-1': await new httpWallet({ id: 'funder-1', network }),
+    'funder-2': await new httpWallet({ id: 'funder-2', network })
+  };
 
   const fundingTarget = 100000000; // 1 BTC
   const amountToFund = 50000000; // .5 BTC
@@ -29,7 +32,9 @@ const network = 'simnet';
   const fundingCoins = {};
 
   // go through each funding wallet to prepare coins
-  for(let funder of funders) {
+  for(let id in funders) {
+    const funder = funders[id];
+
     const coins = await funder.getCoins();
     const funderInfo = await funder.getInfo();
 
@@ -90,24 +95,31 @@ const network = 'simnet';
 
   ```
   **/
-console.log(fundingCoins);
   // Step 3: Create and template the mtx with output for funding target
   const fundMe = new MTX();
   // need this because can't serialize and output mtx with no input
 
   fundMe.addOutput({value: fundingTarget, address: fundeeAddress.address });
-  // Step 4: Add inputs from the funder wallets
-  let key = await funder1Wallet.getWIF(fundingCoins['funder-1'].address);
-  let master = await funder1Wallet.getMaster();
-  const mnemonic = new bcoin.hd.Mnemonic(master.mnemonic);
-  master = bcoin.hd.fromMnemonic(mnemonic,network);
-  key = master.derive(1);
-  console.log(key);
-  const keyring = new bcoin.keyring(key.privateKey);
-  console.log(keyring);
-  fundMe.addOutpoint(fundingCoins['funder-1']);
 
-  fundMe.signInput(0, fundingCoins['funder-1'], keyring);
+  // Step 4: Add inputs from the funder wallets
+  let inputCounter = 0;
+  for(let funder in fundingCoins) {
+    const wallet = funders[funder];
+    const coinOptions = fundingCoins[funder];
+
+    const key = await wallet.getWIF(coinOptions.address);
+    const keyring = new bcoin.keyring.fromSecret(key.privateKey);
+    const coin = bcoin.coin.fromJSON(coinOptions);
+
+    fundMe.addCoin(coin);
+    fundMe.scriptInput(inputCounter, coin, keyring);
+    fundMe.signInput(inputCounter, coin, keyring, Script.hashType.ANYONECANPAY | Script.hashType.ALL);
+    inputCounter++;
+  }
+
+  // confirm that the transaction has been properly templated and signed
+  assert(fundMe.isSigned(), 'Inputs have not been signed correctly');
+
   console.log(fundMe);
   return;
 
@@ -115,7 +127,6 @@ console.log(fundingCoins);
   // and subtract from output value
 
   // Step 6: Transmit the splitting transactions followed by the fund tx
-
 
     // Sign and broadcast tx
 

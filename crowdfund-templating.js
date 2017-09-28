@@ -30,7 +30,6 @@ const master = bcoin.hd.generate();
 
 const fundeeKey = master.derive(0);
 const fundeeKeyring = new Keyring(fundeeKey.privateKey);
-console.log(fundeeKeyring)
 // Derive 2 more private hd keys and keyrings for funders
 const funder1Key = master.derive(1);
 const funder1Keyring = new Keyring(funder1Key.privateKey);
