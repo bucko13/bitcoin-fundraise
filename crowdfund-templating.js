@@ -9,6 +9,13 @@ const Script = bcoin.script;
 const Coin = bcoin.coin;
 const policy = bcoin.protocol.policy
 
+const Utils = require('./utils.js');
+const getMaxFee = Utils.getMaxFee;
+const addInput = Utils.addInput;
+
+const fundingTarget = 100000000; // 1 BTC
+const txRate = 10000; // 10000 satoshis/kb
+
 /**
 Step 1
 
@@ -30,6 +37,8 @@ const master = bcoin.hd.generate();
 
 const fundeeKey = master.derive(0);
 const fundeeKeyring = new Keyring(fundeeKey.privateKey);
+const fundeeAddress = fundeeKeyring.getAddress();
+
 // Derive 2 more private hd keys and keyrings for funders
 const funder1Key = master.derive(1);
 const funder1Keyring = new Keyring(funder1Key.privateKey);
@@ -118,7 +127,7 @@ async function splitCoinbase(coins, targetAmount) {
     // shift off the coinbase coin to use to fund the splitting transaction
     // the fund method will automatically split the remaining funds to the change address
     await mtx.fund([coins[coinsIndex].shift()], {
-      rate: 10000,
+      rate: txRate,
       // send change back to an address belonging to the funder
       changeAddress: funderKeyring.getAddress()
     }).then(() => {
@@ -144,10 +153,10 @@ async function splitCoinbase(coins, targetAmount) {
 
 (async () => {
   const amountToFund = 50000000; // .5 BTC
-  const splitCoins = await splitCoinbase(coins, amountToFund);
+  const funderCoins = await splitCoinbase(coins, amountToFund);
 
   /**
-    splitCoins should return x number of coin arrays, where X is
+    funderCoins should return x number of coin arrays, where X is
     the number of coinbases we created earlier (should be 2)
     with each array having a coin equal to the amount we want to donate
 
@@ -171,46 +180,56 @@ async function splitCoinbase(coins, targetAmount) {
   **/
 
   /**
+  Step 2.5
+  We have a tricky problem now. In a real world situation you're not going to know how many inputs (i.e. funders) you will have.
+  But the more inputs you have, the bigger the transaction and thus the higher the fee you will need to broadcast it.
+  The best we can do is to estimate the size based off of the max number of inputs we are willing to accept.
+
+  In our example, we know there are two inputs. In a more complex application, you might put a cap of say 5, then
+  estimate the fee based on that. If there turn out to be fewer then you just have a relatively high fee.
+  **/
+  const maxInputs = 5;
+  const maxFee = getMaxFee(
+    maxInputs,
+    funderCoins['0'][0],
+    fundeeAddress,
+    funder1Keyring,
+    txRate
+  );
+
+  console.log(`Based on a rate of ${txRate} satoshis/kb and a tx with max ${maxInputs}`);
+  console.log(`the tx fee should be ${maxFee} satoshis`);
+
+  /**
   Step 3
   Now that our funder wallets have funds available
   we can begin to construct the fundee transaction they will donate to
   **/
 
   const fundMe = new MTX();
-  const fundingTarget = 100000000; // 1 BTC
-  const fundeeAddress = fundeeKeyring.getAddress();
 
   // add an output with the target funding amount
 
-  fundMe.addOutput({ value: fundingTarget, address: fundeeAddress });
+  fundMe.addOutput({ value: fundingTarget - maxFee, address: fundeeAddress });
 
   // fund with first funder
-  let fundingCoin = splitCoins['0'][0];
-  fundMe.addCoin(fundingCoin);
-  fundMe.scriptInput(0, fundingCoin, funder1Keyring);
-  fundMe.signInput(0, fundingCoin, funder1Keyring, Script.hashType.ANYONECANPAY | Script.hashType.ALL);
-  assert(fundMe.isSigned(), 'Input was not signed properly');
+  let fundingCoin = funderCoins['0'][0];
+  addInput(fundingCoin, 0, fundMe, funder1Keyring);
 
   // fund with second funder
-  fundingCoin = splitCoins['1'][0];
-  fundMe.addCoin(fundingCoin);
-  fundMe.scriptInput(1, fundingCoin, funder2Keyring)
-  fundMe.signInput(1, fundingCoin, funder2Keyring, Script.hashType.ANYONECANPAY | Script.hashType.ALL);
-  assert(fundMe.isSigned(), 'Input was not signed properly');
+  fundingCoin = funderCoins['1'][0];
+  addInput(fundingCoin, 1, fundMe, funder2Keyring);
 
   // We want to confirm that total value of inputs covers the funding goal
+  // NOTE: the difference goes to the miner in the form of fees
   assert(fundMe.getInputValue() >= fundMe.outputs[0].value, 'Total inputs not enough to fund');
-
-  // based on the size of the transaction, we want to subtract a fee
-  // from the final output
-
-  const txSize = fundMe.getSize();
-  const fee =  policy.getMinFee(txSize, 10000);
-
-  // for some reason mtx only verifies before subtracting fee but not after
-  assert(fundMe.verify(Script.hashType.ANYONECANPAY | Script.hashType.ALL), 'mtx doesn\'t verify');
-  fundMe.subtractFee(fee);
+  assert(fundMe.verify(), 'The mtx is malformed');
 
   const tx = fundMe.toTX();
+  assert(tx.verify(fundMe.view), 'there is a problem with your tx');
+
   console.log('final tx: ', tx);
 })();
+
+
+

@@ -8,27 +8,32 @@ const HashTypes = bcoin.script.hashType;
 const httpWallet = bcoin.http.Wallet;
 const policy = bcoin.protocol.policy;
 
+const Utils = require('./utils.js');
+
 const network = 'simnet';
-const VERIFY_FLAGS = Script.hashType.ANYONECANPAY | Script.hashType.ALL;
+const SCRIPT_HASHTYPE = Script.hashType.ANYONECANPAY | Script.hashType.ALL;
+
+const fundingTarget = 100000000; // 1 BTC
+const amountToFund = 50000000; // .5 BTC
+const rate = 10000; // satoshis per kb
+const maxInputs = 5; // this will be used in calculating fee
 
 (async () => {
   const client = await new bcoin.http.Client({ network });
 
   // Step 1: Setup our wallets and funding targets
   const fundeeWallet = await new httpWallet({ id: 'fundee', network });
-
   const fundeeAddress = await fundeeWallet.createAddress('default');
-
   const funders = {
     'funder1': await new httpWallet({ id: 'funder1', network }),
     'funder2': await new httpWallet({ id: 'funder2', network })
   };
 
-  const fundingTarget = 100000000; // 1 BTC
-  const amountToFund = 50000000; // .5 BTC
-  const rate = 3000; // satoshis per kb
 
-  // Step 2: Create coin/outpoint that equals the target fund amount for funders
+  // Step 2: Prepare coins for funding
+  // Because ALL | ANYONECANPAY inputs txs must keep a fixed number of outputs
+  // There can be no change outputs, which means that inputs must come from exact change outpoints/coins
+
   const fundingCoins = {};
 
   // go through each funding wallet to prepare coins
@@ -79,7 +84,6 @@ const VERIFY_FLAGS = Script.hashType.ANYONECANPAY | Script.hashType.ALL;
     }
     fundingCoins[funder.id] = fundingCoin;
   }
-  console.log('coins: ', fundingCoins);
 
   /**
   fundingCoins should be object with wallet id and corresponding coin to be used for funding
@@ -106,9 +110,29 @@ const VERIFY_FLAGS = Script.hashType.ANYONECANPAY | Script.hashType.ALL;
 
   ```
   **/
+
+  /**
+  Step 2.5
+  We have a tricky problem now. In a real world situation you're not going to know how many inputs (i.e. funders) you will have.
+  But the more inputs you have, the bigger the transaction and thus the higher the fee you will need to broadcast it.
+  The best we can do is to estimate the size based off of the max number of inputs we are willing to accept.
+
+  In our example, we know there are two inputs. In a more complex application, you might put a cap of say 10, then
+  estimate the fee based on that. If there turn out to be fewer then you just have a relatively high fee.
+  **/
+
+  const testKey = await funders['funder1'].getWIF(fundingCoins['funder1'].address);
+  const testKeyring = new bcoin.keyring.fromSecret(testKey.privateKey);
+  const maxFee = Utils.getMaxFee(maxInputs, fundingCoins['funder1'], fundeeAddress.address, testKeyring, rate);
+
+  console.log(`Based on a rate of ${rate} satoshis/kb and a tx with max ${maxInputs}`);
+  console.log(`the tx fee should be ${maxFee} satoshis`);
+
   // Step 3: Create and template the mtx with output for funding target
   const fundMe = new MTX();
-  fundMe.addOutput({value: fundingTarget, address: fundeeAddress.address });
+
+  // Use the maxFee to calculate output value for transaction
+  fundMe.addOutput({value: fundingTarget - maxFee, address: fundeeAddress.address });
 
   // Step 4: Add inputs from the funder wallets
   let inputCounter = 0;
@@ -118,37 +142,30 @@ const VERIFY_FLAGS = Script.hashType.ANYONECANPAY | Script.hashType.ALL;
 
     const key = await wallet.getWIF(coinOptions.address);
     const keyring = new bcoin.keyring.fromSecret(key.privateKey);
-    const coin = bcoin.coin.fromJSON(coinOptions);
 
-    fundMe.addCoin(coin);
-    fundMe.scriptInput(inputCounter, coin, keyring);
-    fundMe.signInput(inputCounter, coin, keyring, VERIFY_FLAGS);
+    Utils.addInput(coinOptions, inputCounter, fundMe, keyring);
     inputCounter++;
     assert(fundMe.isSigned(), 'Input has not been signed correctly');
   }
 
   // confirm that the transaction has been properly templated and signed
-  assert(fundMe.verify(VERIFY_FLAGS), 'MTX is malformed');
-  console.log(fundMe);
-
-  // Step 5: estimate fee based on rate and size of transaction
-  // and subtract from output value
-  const txSize = fundMe.getSize();
-  const fee = policy.getMinFee(txSize, 10000);
-
-  fundMe.subtractFee(fee);
+  assert(
+    fundMe.inputs.length === Object.keys(funders).length,
+    'Number of inputs in MTX is incorrect'
+  );
+  assert(fundMe.verify(), 'MTX is malformed');
 
   const tx = fundMe.toTX();
 
+  assert(tx.verify(fundMe.view), 'TX is malformed. Fix before broadcasting');
+
   // Step 6: broadcast tx
-  console.log(tx);
-  const broadcastStatus = await client.broadcast(tx);
-  console.log('tx broadcasted: ', broadcastStatus);
+  try {
+    const broadcastStatus = await client.broadcast(tx);
+    console.log('Final TX:', tx);
+    console.log('tx broadcasted: ', broadcastStatus);
+  } catch(e){
+    console.log(e);
+  }
 })();
 
-/**
- NOTE:
- Verification is failing in the mempool and the blockchain for the nonstandard transaction
- Commenting out line 692-695 in chain.js and 1036-1039 in mempool.js will allow the
- the tx verification to pass
- **/
