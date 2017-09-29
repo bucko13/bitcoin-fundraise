@@ -195,7 +195,7 @@ async function splitCoinbase(coins, targetAmount) {
   fundingCoin = splitCoins['1'][0];
   fundMe.addCoin(fundingCoin);
   fundMe.scriptInput(1, fundingCoin, funder2Keyring)
-  fundMe.signInput(1, fundingCoin, funder2Keyring, Script.hashType.ANYONECANPAY);
+  fundMe.signInput(1, fundingCoin, funder2Keyring, Script.hashType.ANYONECANPAY | Script.hashType.ALL);
   assert(fundMe.isSigned(), 'Input was not signed properly');
 
   // We want to confirm that total value of inputs covers the funding goal
@@ -207,12 +207,10 @@ async function splitCoinbase(coins, targetAmount) {
   const txSize = fundMe.getSize();
   const fee =  policy.getMinFee(txSize, 10000);
 
+  // for some reason mtx only verifies before subtracting fee but not after
+  assert(fundMe.verify(Script.hashType.ANYONECANPAY | Script.hashType.ALL), 'mtx doesn\'t verify');
   fundMe.subtractFee(fee);
 
   const tx = fundMe.toTX();
   console.log('final tx: ', tx);
-
-  // how to verify non standard transaction?
-  // assert(tx.verify(fundMe.view));
-
 })();
