@@ -6,12 +6,12 @@ const MTX = bcoin.mtx;
 const Script = bcoin.script;
 const HashTypes = bcoin.script.hashType;
 const httpWallet = bcoin.http.Wallet;
+const policy = bcoin.protocol.policy;
 
 const network = 'simnet';
+const VERIFY_FLAGS = Script.hashType.ANYONECANPAY | Script.hashType.ALL;
 
 (async () => {
-  // const primary = await new httpWallet({id: 'primary', network: 'simnet'});
-  // const balance = await primary.getBalance('default');
   const client = await new bcoin.http.Client({ network });
 
   // Step 1: Setup our wallets and funding targets
@@ -20,13 +20,13 @@ const network = 'simnet';
   const fundeeAddress = await fundeeWallet.createAddress('default');
 
   const funders = {
-    'funder-1': await new httpWallet({ id: 'funder-1', network }),
-    'funder-2': await new httpWallet({ id: 'funder-2', network })
+    'funder1': await new httpWallet({ id: 'funder1', network }),
+    'funder2': await new httpWallet({ id: 'funder2', network })
   };
 
   const fundingTarget = 100000000; // 1 BTC
   const amountToFund = 50000000; // .5 BTC
-  const rate = 300; // satoshis per kb
+  const rate = 3000; // satoshis per kb
 
   // Step 2: Create coin/outpoint that equals the target fund amount for funders
   const fundingCoins = {};
@@ -39,15 +39,16 @@ const network = 'simnet';
     const funderInfo = await funder.getInfo();
 
     // go through available coins to find a coin equal to or greater than value to fund
-    let funderCoin = {};
+    let fundingCoin = {};
     for(let coin of coins) {
       if (coin.value === amountToFund) {
         // if we already have a coin of the right value we can use that
-        funderCoin = coin;
+        fundingCoin = coin;
         break;
       }
     }
-    if (!Object.keys(funderCoin).length) {
+
+    if (!Object.keys(fundingCoin).length) {
       // if we don't have a coin of the right amount to fund with
       // we need to create one by sending the funder wallet
       // a tx that includes an output of the right amount
@@ -61,19 +62,29 @@ const network = 'simnet';
         }]
       });
 
-      // confirm index of output
-      assert(tx.outputs[0].value === amountToFund);
+      // get index of ouput for fundingCoin
+      let coinIndex;
+      for (let i=0; i < tx.outputs.length; i++) {
+        if (tx.outputs[i].value === amountToFund) {
+          coinIndex = i;
+          break;
+        }
+      }
+
+      assert(tx.outputs[coinIndex].value === amountToFund, 'value of output at index not correct');
 
       // first argument is for the account
       // default is being used for all examples
-      funderCoin = await funder.getCoin('default', tx.hash, 0);
+      fundingCoin = await funder.getCoin('default', tx.hash, coinIndex);
     }
-    fundingCoins[funder.id] = funderCoin;
+    fundingCoins[funder.id] = fundingCoin;
   }
+  console.log('coins: ', fundingCoins);
+
   /**
   fundingCoins should be object with wallet id and corresponding coin to be used for funding
   ```javascript
-    { 'funder-1':
+    { 'funder1':
        { version: 1,
          height: -1,
          value: 50000000,
@@ -82,7 +93,7 @@ const network = 'simnet';
          coinbase: false,
          hash: '163068016a39e2d9c869bcdb8646dbca93e07824db39217b5c444e7c61d1a82c',
          index: 0 },
-      'funder-2':
+      'funder2':
        { version: 1,
          height: -1,
          value: 50000000,
@@ -97,8 +108,6 @@ const network = 'simnet';
   **/
   // Step 3: Create and template the mtx with output for funding target
   const fundMe = new MTX();
-  // need this because can't serialize and output mtx with no input
-
   fundMe.addOutput({value: fundingTarget, address: fundeeAddress.address });
 
   // Step 4: Add inputs from the funder wallets
@@ -113,36 +122,33 @@ const network = 'simnet';
 
     fundMe.addCoin(coin);
     fundMe.scriptInput(inputCounter, coin, keyring);
-    fundMe.signInput(inputCounter, coin, keyring, Script.hashType.ANYONECANPAY | Script.hashType.ALL);
+    fundMe.signInput(inputCounter, coin, keyring, VERIFY_FLAGS);
     inputCounter++;
+    assert(fundMe.isSigned(), 'Input has not been signed correctly');
   }
 
   // confirm that the transaction has been properly templated and signed
-  assert(fundMe.isSigned(), 'Inputs have not been signed correctly');
-
+  assert(fundMe.verify(VERIFY_FLAGS), 'MTX is malformed');
   console.log(fundMe);
-  return;
 
   // Step 5: estimate fee based on rate and size of transaction
   // and subtract from output value
+  const txSize = fundMe.getSize();
+  const fee = policy.getMinFee(txSize, 10000);
 
-  // Step 6: Transmit the splitting transactions followed by the fund tx
+  fundMe.subtractFee(fee);
 
-    // Sign and broadcast tx
+  const tx = fundMe.toTX();
 
-  // console.log('transaction: ', fundMe);
+  // Step 6: broadcast tx
+  console.log(tx);
+  const broadcastStatus = await client.broadcast(tx);
+  console.log('tx broadcasted: ', broadcastStatus);
 })();
 
-/** *****
-NOTES:
-- need to account for change addresses:
-    - only "exact" UTXOs added, so process for in-exact would be
-      to split a UTXO first sending to yourself
-- need to account for who pays the fee
-  - maybe the receiver adds one final input that is entirely for fee
-
-Extra Features:
-- funder that does "matching donations"
-- need to account for change addresses
-- need to account for who pays the fee (probably should be the receiver)
-***** **/
+/**
+ NOTE:
+ Verification is failing in the mempool and the blockchain for the nonstandard transaction
+ Commenting out line 692-695 in chain.js and 1036-1039 in mempool.js will allow the
+ the tx verification to pass
+ **/
