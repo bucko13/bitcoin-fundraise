@@ -20,7 +20,7 @@ There are two examples both built entirely with the [bcoin](http://bcoin.io) lib
 Obviously this is extremely basic. Interesting ideas for how to extend include:
 - More flexible contribution scheme (currently it's just 2 funders that split the amount evenly). E.g. custom number of contributers, custom contribution amount, etc.
 - UX to let people interact with the transaction via a browser
-- More advanced interface for fee estimation and include platform for large number of funders (for example, since you may be limited to number of funders per tx, you could include interface for multiple transactions for a single campaign)
+- More advanced interface for fee estimation and include platform for large number of funders (for example, since you may be limited to number of funders per tx, you could include interface for multiple transactions for a single campaign. You would also want to include a check to make sure your tx is not bigger than 100kb otherwise it'll get rejected by the network)
 - Add a fund matching scheme where someone can say they will match future contributions
 - Currently the examples split transactions to make a coin available that equals the target contribution amount. This expensive since you ahve broadcast multiple transactions. An interface to choose to donate from available available coins might help to make this more efficient.
 
