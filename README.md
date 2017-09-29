@@ -5,7 +5,7 @@ These are two simple apps that show you how to template transactions for use in 
 The basic idea is to create a single transaction with a predetermined output and then you take individual contributions, i.e. inputs, where the signatures on the inputs are on the transaction excluding all other inputs (this is what an ALL|ANYONCANPAY sighash indicates). When the transaction is fully funded then you convert into an immutable transaction and can publish to the network.
 
 ## SIGHASH Flags and ALL|ANYONECANPAY
-No way I could do it better than the master himself.
+No way I could explain it better than the master himself.
 
 From "Mastering Bitcoin":
 > The way SIGHASH flags are applied during signing and verification is that a copy of the transaction is made and certain fields within are truncated (set to zero length and emptied). The resulting transaction is serialized. The SIGHASH flag is added to the end of the serialized transaction and the result is hashed. The hash itself is the "message" that is signed. Depending on which SIGHASH flag is used, different parts of the transaction are truncated. The resulting hash depends on different subsets of the data in the transaction. By including the SIGHASH as the last step before hashing, the signature commits the SIGHASH type as well, so it can’t be changed (e.g., by a miner).
@@ -20,6 +20,9 @@ There are two examples both built entirely with the [bcoin](http://bcoin.io) lib
 Obviously this is extremely basic. Interesting ideas for how to extend include:
 - More flexible contribution scheme (currently it's just 2 funders that split the amount evenly). E.g. custom number of contributers, custom contribution amount, etc.
 - UX to let people interact with the transaction via a browser
-- More advanced interface for fee estimation and platform for large number of funders (e.g. split into multiple txs)
+- More advanced interface for fee estimation and include platform for large number of funders (for example, since you may be limited to number of funders per tx, you could include interface for multiple transactions for a single campaign)
 - Add a fund matching scheme where someone can say they will match future contributions
 - Currently the examples split transactions to make a coin available that equals the target contribution amount. This expensive since you ahve broadcast multiple transactions. An interface to choose to donate from available available coins might help to make this more efficient.
+
+### Working With Transactions in Bcoin
+Some code heavily borrowed from the bcoin example on working with transactions. It's definitely worth taking a look to better understand the basics of how you can work with keys, keyrings, coins, and transactions with the bcoin library: [Working with Transactions](https://github.com/bcoin-org/bcoin/blob/master/docs/Working-with-transactions.md)

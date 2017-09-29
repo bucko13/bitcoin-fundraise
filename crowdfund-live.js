@@ -32,7 +32,10 @@ const maxInputs = 5; // this will be used in calculating fee
 
   // Step 2: Prepare coins for funding
   // Because ALL | ANYONECANPAY inputs txs must keep a fixed number of outputs
-  // There can be no change outputs, which means that inputs must come from exact change outpoints/coins
+  // There can be no change outputs, which means that inputs must come from exact
+  // change outpoints/coins. So what we need to do is fund a tx for each wallet
+  // that gets sent back to the same wallet and has 1 output equal to the value
+  // we want to fund our tx with.
 
   const fundingCoins = {};
 

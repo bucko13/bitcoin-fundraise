@@ -76,85 +76,42 @@ for(let i=0; i < funders.length; i++) {
 
 /**
 coins object should look something like:
-```javascript{
-
-  '0':
-      [
-        {
-          type: 'pubkeyhash',
-          version: 1,
-          height: -1,
-          value: '5.0',
-          script: <Script: OP_DUP OP_HASH160 0x14 0x64cc4e55b2daec25431bd879ef39302a77c1c1ce OP_EQUALVERIFY OP_CHECKSIG>,
-          coinbase: true,
-          hash: '151e5551cdcec5fff06818fb78ac3d584361276e862b5700110ec8321869d650',
-          index: 0,
-          address: <Address: type=pubkeyhash version=-1 str=mphvcfcFneRZvyYsmzhy57cSDzFbGrWaRb>
-        }
-      ],
-  '1': [...]
-}
+```javascript
+  {
+    '0':
+        [
+          {
+            type: 'pubkeyhash',
+            version: 1,
+            height: -1,
+            value: '5.0',
+            script: <Script: OP_DUP OP_HASH160 0x14 0x64cc4e55b2daec25431bd879ef39302a77c1c1ce OP_EQUALVERIFY OP_CHECKSIG>,
+            coinbase: true,
+            hash: '151e5551cdcec5fff06818fb78ac3d584361276e862b5700110ec8321869d650',
+            index: 0,
+            address: <Address: type=pubkeyhash version=-1 str=mphvcfcFneRZvyYsmzhy57cSDzFbGrWaRb>
+          }
+        ],
+    '1': [...]
+  }
 ```
 **/
 
-/**
-Step 2
-
-Since ALL|ANYONECANPAY transactions mean a fixed output,
-you can't add new outputs without other signatures becoming invalid.
-Adding too many outputs will also increase the size of the tx exponentially
-and make the tx costs too high.
-So what we want to do is have each funder create a coin (UTXO) with the value
-of what they want to donate.
-**/
-
-async function splitCoinbase(coins, targetAmount) {
-  // make an output of the right size available
-  // loop through each coinbase coin to split
-  for(const coinsIndex in coins) {
-    // funder will be at the same index as the key of the coins we are accessing
-    const funderKeyring = funders[coinsIndex];
-    const mtx = new MTX();
-
-    assert(coins[coinsIndex][0].value > targetAmount, 'coin value is not enough!');
-
-    // creating a transaction that will have an output equal to what we want to fund
-    mtx.addOutput({
-      address: funderKeyring.getAddress(),
-      value: targetAmount
-    });
-
-    // shift off the coinbase coin to use to fund the splitting transaction
-    // the fund method will automatically split the remaining funds to the change address
-    await mtx.fund([coins[coinsIndex].shift()], {
-      rate: txRate,
-      // send change back to an address belonging to the funder
-      changeAddress: funderKeyring.getAddress()
-    }).then(() => {
-      // sign the mtx to finalize split
-      mtx.sign(funderKeyring);
-      assert(mtx.verify());
-
-      const tx = mtx.toTX();
-      assert(tx.verify(mtx.view));
-
-      const outputs = tx.outputs;
-
-      // get coins from tx
-      outputs.forEach((outputs, index) => {
-        coins[coinsIndex].push(Coin.fromTX(tx, index, -1));
-      });
-    })
-    .catch(e => console.log('There was an error: ', e));
-  }
-
-  return coins;
-};
-
 (async () => {
   const amountToFund = 50000000; // .5 BTC
-  const funderCoins = await splitCoinbase(coins, amountToFund);
 
+  /**
+  Step 2
+
+  Since ALL|ANYONECANPAY transactions mean a fixed output,
+  you can't add new outputs without other signatures becoming invalid.
+  Adding too many outputs will also increase the size of the tx exponentially
+  and make the tx costs too high.
+  So what we want to do is have each funder create a coin (UTXO) with the value
+  of what they want to donate.
+  **/
+  const funderCoins = await Utils.splitCoinbase(funders, coins, amountToFund, txRate);
+  console.log(funderCoins);
   /**
     funderCoins should return x number of coin arrays, where X is
     the number of coinbases we created earlier (should be 2)
