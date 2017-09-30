@@ -32,7 +32,6 @@ const addInput = function addInput(coin, inputIndex, mtx, keyring, hashType) {
 }
 
 const splitCoinbase = async function splitCoinbase(keyrings, coins, targetAmount, txRate) {
-  // make an output of the right size available
   // loop through each coinbase coin to split
   for(const coinsIndex in coins) {
     // funder will be at the same index as the key of the coins we are accessing

@@ -105,8 +105,7 @@ coins object should look something like:
 
   Since ALL|ANYONECANPAY transactions mean a fixed output,
   you can't add new outputs without other signatures becoming invalid.
-  Adding too many outputs will also increase the size of the tx exponentially
-  and make the tx costs too high.
+
   So what we want to do is have each funder create a coin (UTXO) with the value
   of what they want to donate.
   **/
