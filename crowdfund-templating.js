@@ -14,6 +14,7 @@ const getMaxFee = Utils.getMaxFee;
 const addInput = Utils.addInput;
 
 const fundingTarget = 100000000; // 1 BTC
+const amountToFund = 50000000; // .5 BTC
 const txRate = 10000; // 10000 satoshis/kb
 
 /**
@@ -97,9 +98,7 @@ coins object should look something like:
 ```
 **/
 
-(async () => {
-  const amountToFund = 50000000; // .5 BTC
-
+const composeCrowdfund = async function composeCrowdfund() {
   /**
   Step 2
 
@@ -144,7 +143,7 @@ coins object should look something like:
   In our example, we know there are two inputs. In a more complex application, you might put a cap of say 5, then
   estimate the fee based on that. If there turn out to be fewer then you just have a relatively high fee.
   **/
-  const maxInputs = 5;
+  const maxInputs = 2;
   const maxFee = getMaxFee(
     maxInputs,
     funderCoins['0'][0],
@@ -184,8 +183,7 @@ coins object should look something like:
   const tx = fundMe.toTX();
   assert(tx.verify(fundMe.view), 'there is a problem with your tx');
 
-  console.log('final tx: ', tx);
-})();
+  return tx;
+};
 
-
-
+composeCrowdfund().then(myCrowdfundTx => console.log(myCrowdfundTx));
