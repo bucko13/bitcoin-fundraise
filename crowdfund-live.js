@@ -3,22 +3,19 @@
 const assert = require('assert');
 const bcoin = require('bcoin');
 const MTX = bcoin.mtx;
-const Script = bcoin.script;
-const HashTypes = bcoin.script.hashType;
 const httpWallet = bcoin.http.Wallet;
 const policy = bcoin.protocol.policy;
 
 const Utils = require('./utils.js');
 
 const network = 'simnet';
-const SCRIPT_HASHTYPE = Script.hashType.ANYONECANPAY | Script.hashType.ALL;
 
 const fundingTarget = 100000000; // 1 BTC
 const amountToFund = 50000000; // .5 BTC
 const rate = 10000; // satoshis per kb
 const maxInputs = 5; // this will be used in calculating fee
 
-(async () => {
+const composeWalletCrowdfund = async function composeWalletCrowdfund() {
   const client = await new bcoin.http.Client({ network });
 
   // Step 1: Setup our wallets and funding targets
@@ -128,7 +125,7 @@ const maxInputs = 5; // this will be used in calculating fee
   const testKeyring = new bcoin.keyring.fromSecret(testKey.privateKey);
   const maxFee = Utils.getMaxFee(maxInputs, fundingCoins['funder1'], fundeeAddress.address, testKeyring, rate);
 
-  console.log(`Based on a rate of ${rate} satoshis/kb and a tx with max ${maxInputs}`);
+  console.log(`Based on a rate of ${rate} satoshis/kb and a tx with max ${maxInputs} inputs`);
   console.log(`the tx fee should be ${maxFee} satoshis`);
 
   // Step 3: Create and template the mtx with output for funding target
@@ -165,10 +162,12 @@ const maxInputs = 5; // this will be used in calculating fee
   // Step 6: broadcast tx
   try {
     const broadcastStatus = await client.broadcast(tx);
-    console.log('Final TX:', tx);
-    console.log('tx broadcasted: ', broadcastStatus);
-  } catch(e){
-    console.log(e);
+    return tx;
+  } catch (e) {
+    console.log('There was a problem: ', e);
   }
-})();
+}
 
+composeWalletCrowdfund()
+  .then(myCrowdfundTx => console.log('Transaction broadcast: ', myCrowdfundTx))
+  .catch(e => console.log('There was a problem: ', e));

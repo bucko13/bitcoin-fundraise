@@ -152,7 +152,7 @@ const composeCrowdfund = async function composeCrowdfund() {
     txRate
   );
 
-  console.log(`Based on a rate of ${txRate} satoshis/kb and a tx with max ${maxInputs}`);
+  console.log(`Based on a rate of ${txRate} satoshis/kb and a tx with max ${maxInputs} inputs`);
   console.log(`the tx fee should be ${maxFee} satoshis`);
 
   /**
