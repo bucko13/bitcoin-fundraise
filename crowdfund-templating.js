@@ -10,7 +10,6 @@ const Coin = bcoin.coin;
 const policy = bcoin.protocol.policy
 
 const Utils = require('./utils.js');
-const getMaxFee = Utils.getMaxFee;
 const addInput = Utils.addInput;
 const getFeeForInput = Utils.getFeeForInput;
 
@@ -110,7 +109,7 @@ const composeCrowdfund = async function composeCrowdfund(coins) {
 
   A second consideration we need to make is how to fund the transaction fees.
   `getFeeForInput` takes care of this by creating a sample tx with just one input
-  for each funder. Since different inputs can be using different transaction types
+  for each funder. Since different keyrings can be using different transaction types
   of different sizes (p2sh, multisig, etc.) we will add the estimated fee on each input
   and use that to split the coins.
   **/
@@ -123,7 +122,7 @@ const composeCrowdfund = async function composeCrowdfund(coins) {
     const targetPlusFee = amountToFund + estimatedFee;
 
     // split the coinbase with targetAmount plus estimated fee
-    const splitCoins = await Utils.splitCoinbase2(funders[index], coinbase, targetPlusFee, txRate);
+    const splitCoins = await Utils.splitCoinbase(funders[index], coinbase, targetPlusFee, txRate);
 
     // add to funderCoins object with returned coins from splitCoinbase being value,
     // and index being the key

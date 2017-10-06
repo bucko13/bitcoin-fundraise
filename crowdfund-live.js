@@ -10,20 +10,21 @@ const Utils = require('./utils.js');
 
 const network = 'simnet';
 
-const fundingTarget = 100000000; // 1 BTC
-const amountToFund = 50000000; // .5 BTC
-const rate = 10000; // satoshis per kb
-const maxInputs = 5; // this will be used in calculating fee
 
 const composeWalletCrowdfund = async function composeWalletCrowdfund() {
+  const fundingTarget = 100000000; // 1 BTC
+  let amountToFund = 50000000; // .5 BTC
+  const rate = 10000; // satoshis per kb
+  const maxInputs = 5; // this will be used in calculating fee
+
   const client = await new bcoin.http.Client({ network });
 
   // Step 1: Setup our wallets and funding targets
   const fundeeWallet = await new httpWallet({ id: 'fundee', network });
   const fundeeAddress = await fundeeWallet.createAddress('default');
   const funders = {
-    'funder1': await new httpWallet({ id: 'funder1', network }),
-    'funder2': await new httpWallet({ id: 'funder2', network })
+    'funder-1': await new httpWallet({ id: 'funder-1', network }),
+    'funder-2': await new httpWallet({ id: 'funder-2', network })
   };
 
 
@@ -42,6 +43,16 @@ const composeWalletCrowdfund = async function composeWalletCrowdfund() {
 
     const coins = await funder.getCoins();
     const funderInfo = await funder.getInfo();
+
+    // First we need to see what the fee would be for each funding wallet
+    // Since different inputs can be using different transaction types
+    // of different sizes (p2sh, multisig, etc.) we will add the estimated fee on each input
+    // and use that to split the coins.
+
+    const funderKey = await funder.getWIF(coins[0].address);
+    const funderKeyring = new bcoin.keyring.fromSecret(funderKey.privateKey);
+    const feeForInput = Utils.getFeeForInput(coins[0], fundeeAddress.address, funderKeyring, rate);
+    amountToFund += feeForInput;
 
     // go through available coins to find a coin equal to or greater than value to fund
     let fundingCoin = {};
@@ -88,7 +99,7 @@ const composeWalletCrowdfund = async function composeWalletCrowdfund() {
   /**
   fundingCoins should be object with wallet id and corresponding coin to be used for funding
   ```javascript
-    { 'funder1':
+    { 'funder-1':
        { version: 1,
          height: -1,
          value: 50000000,
@@ -97,7 +108,7 @@ const composeWalletCrowdfund = async function composeWalletCrowdfund() {
          coinbase: false,
          hash: '163068016a39e2d9c869bcdb8646dbca93e07824db39217b5c444e7c61d1a82c',
          index: 0 },
-      'funder2':
+      'funder-2':
        { version: 1,
          height: -1,
          value: 50000000,
@@ -111,28 +122,10 @@ const composeWalletCrowdfund = async function composeWalletCrowdfund() {
   ```
   **/
 
-  /**
-  Step 2.5
-  We have a tricky problem now. In a real world situation you're not going to know how many inputs (i.e. funders) you will have.
-  But the more inputs you have, the bigger the transaction and thus the higher the fee you will need to broadcast it.
-  The best we can do is to estimate the size based off of the max number of inputs we are willing to accept.
-
-  In our example, we know there are two inputs. In a more complex application, you might put a cap of say 10, then
-  estimate the fee based on that. If there turn out to be fewer then you just have a relatively high fee.
-  **/
-
-  const testKey = await funders['funder1'].getWIF(fundingCoins['funder1'].address);
-  const testKeyring = new bcoin.keyring.fromSecret(testKey.privateKey);
-  const maxFee = Utils.getMaxFee(maxInputs, fundingCoins['funder1'], fundeeAddress.address, testKeyring, rate);
-
-  console.log(`Based on a rate of ${rate} satoshis/kb and a tx with max ${maxInputs} inputs`);
-  console.log(`the tx fee should be ${maxFee} satoshis`);
-
   // Step 3: Create and template the mtx with output for funding target
   const fundMe = new MTX();
 
-  // Use the maxFee to calculate output value for transaction
-  fundMe.addOutput({value: fundingTarget - maxFee, address: fundeeAddress.address });
+  fundMe.addOutput({value: fundingTarget, address: fundeeAddress.address });
 
   // Step 4: Add inputs from the funder wallets
   let inputCounter = 0;
@@ -156,12 +149,14 @@ const composeWalletCrowdfund = async function composeWalletCrowdfund() {
   assert(fundMe.verify(), 'MTX is malformed');
 
   const tx = fundMe.toTX();
-
   assert(tx.verify(fundMe.view), 'TX is malformed. Fix before broadcasting');
+
+  console.log('Total value of inputs: ', fundMe.getInputValue() );
+  console.log('Fee to go to miners: ', fundMe.getInputValue() - fundingTarget);
 
   // Step 6: broadcast tx
   try {
-    const broadcastStatus = await client.broadcast(tx);
+    await client.broadcast(tx);
     return tx;
   } catch (e) {
     console.log('There was a problem: ', e);
