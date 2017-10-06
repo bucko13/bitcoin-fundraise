@@ -12,10 +12,7 @@ const policy = bcoin.protocol.policy
 const Utils = require('./utils.js');
 const getMaxFee = Utils.getMaxFee;
 const addInput = Utils.addInput;
-
-const fundingTarget = 100000000; // 1 BTC
-const amountToFund = 50000000; // .5 BTC
-const txRate = 10000; // 10000 satoshis/kb
+const getFeeForInput = Utils.getFeeForInput;
 
 /**
 Step 1
@@ -98,7 +95,10 @@ coins object should look something like:
 ```
 **/
 
-const composeCrowdfund = async function composeCrowdfund() {
+const composeCrowdfund = async function composeCrowdfund(coins) {
+  const fundingTarget = 100000000; // 1 BTC
+  const amountToFund = 50000000; // .5 BTC
+  const txRate = 10000; // 10000 satoshis/kb
   /**
   Step 2
 
@@ -107,13 +107,35 @@ const composeCrowdfund = async function composeCrowdfund() {
 
   So what we want to do is have each funder create a coin (UTXO) with the value
   of what they want to donate.
+
+  A second consideration we need to make is how to fund the transaction fees.
+  `getFeeForInput` takes care of this by creating a sample tx with just one input
+  for each funder. Since different inputs can be using different transaction types
+  of different sizes (p2sh, multisig, etc.) we will add the estimated fee on each input
+  and use that to split the coins.
   **/
-  const funderCoins = await Utils.splitCoinbase(funders, coins, amountToFund, txRate);
-  console.log(funderCoins);
+  const funderCoins = {};
+  // Loop through each coinbase
+  for (let index in coins) {
+    const coinbase = coins[index][0];
+    // estimate fee for each coin (assuming their split coins will use same tx type)
+    const estimatedFee = getFeeForInput(coinbase, fundeeAddress, funders[index], txRate);
+    const targetPlusFee = amountToFund + estimatedFee;
+
+    // split the coinbase with targetAmount plus estimated fee
+    const splitCoins = await Utils.splitCoinbase2(funders[index], coinbase, targetPlusFee, txRate);
+
+    // add to funderCoins object with returned coins from splitCoinbase being value,
+    // and index being the key
+    funderCoins[index] = splitCoins;
+  }
+  console.log('funderCoins', funderCoins)
+
   /**
     funderCoins should return x number of coin arrays, where X is
     the number of coinbases we created earlier (should be 2)
-    with each array having a coin equal to the amount we want to donate
+    with each array having a coin equal to the amount we
+    want to donate (including fee)
 
     ```javascript
     {
@@ -121,39 +143,18 @@ const composeCrowdfund = async function composeCrowdfund() {
          [ { type: 'pubkeyhash',
              version: 1,
              height: -1,
-             value: '0.5',
-             script: <Script: OP_DUP OP_HASH160 0x14 0x62f725e83caf894aa6c3efd29ef28649fc448825 OP_EQUALVERIFY OP_CHECKSIG>,
+             value: '0.5000157',
+             script: <Script: OP_DUP OP_HASH160 0x14 0x59e3cf2f7de8846ca63a026f19c5e5d7e4ae197e OP_EQUALVERIFY OP_CHECKSIG>,
              coinbase: false,
-             hash: '774822d84bd5af02f1b3eacd6215e0a1bcf07cfb6675a000c8a01d2ea34f2a32',
+             hash: '94a4e11c514119113ebd8b5eb237cdcd98cf25027f9f34a1ed5e10c85dff6b35',
              index: 0,
-             address: <Address: type=pubkeyhash version=-1 str=mpYEb17KR7MVhuPZT1GsW3SywZx8ihYube> },
+             address: <Address: type=pubkeyhash version=-1 str=19CJ3YRm1wdKUFBC4siGeNsazEkoEj3nMn> },
              ...
           ],
       '1': [...]
     }
     ```
   **/
-
-  /**
-  Step 2.5
-  We have a tricky problem now. In a real world situation you're not going to know how many inputs (i.e. funders) you will have.
-  But the more inputs you have, the bigger the transaction and thus the higher the fee you will need to broadcast it.
-  The best we can do is to estimate the size based off of the max number of inputs we are willing to accept.
-
-  In our example, we know there are two inputs. In a more complex application, you might put a cap of say 5, then
-  estimate the fee based on that. If there turn out to be fewer then you just have a relatively high fee.
-  **/
-  const maxInputs = 2;
-  const maxFee = getMaxFee(
-    maxInputs,
-    funderCoins['0'][0],
-    fundeeAddress,
-    funder1Keyring,
-    txRate
-  );
-
-  console.log(`Based on a rate of ${txRate} satoshis/kb and a tx with max ${maxInputs} inputs`);
-  console.log(`the tx fee should be ${maxFee} satoshis`);
 
   /**
   Step 3
@@ -165,7 +166,7 @@ const composeCrowdfund = async function composeCrowdfund() {
 
   // add an output with the target funding amount
 
-  fundMe.addOutput({ value: fundingTarget - maxFee, address: fundeeAddress });
+  fundMe.addOutput({ value: fundingTarget, address: fundeeAddress });
 
   // fund with first funder
   let fundingCoin = funderCoins['0'][0];
@@ -181,9 +182,12 @@ const composeCrowdfund = async function composeCrowdfund() {
   assert(fundMe.verify(), 'The mtx is malformed');
 
   const tx = fundMe.toTX();
+  console.log('total input value = ', fundMe.getInputValue());
+  console.log('Fee getting sent to miners:', fundMe.getInputValue() - fundingTarget, 'satoshis');
+
   assert(tx.verify(fundMe.view), 'there is a problem with your tx');
 
   return tx;
 };
 
-composeCrowdfund().then(myCrowdfundTx => console.log(myCrowdfundTx));
+composeCrowdfund(coins).then(myCrowdfundTx => console.log(myCrowdfundTx)).catch(e => console.log('there was an error: ', e));
